@@ -28,8 +28,7 @@ function setStore(items){ localStorage.setItem(STORE, JSON.stringify(items)); wi
 function useQueue(){
   const [items,setItems]=useState(getStore());
   useEffect(()=>{const f=()=>setItems(getStore()); window.addEventListener('storage',f); window.addEventListener('queue-change',f); const t=setInterval(f,2500); return()=>{window.removeEventListener('storage',f); window.removeEventListener('queue-change',f); clearInterval(t)}},[]);
-  return [items,(next)=>{setStore(next); setItems(next)}}];
-}
+ return [items,(next)=>{setStore(next); setItems(next)}];}
 function active(items){return items.filter(i=>!['completed','cancelled','absent'].includes(i.status))}
 function service(id){return SERVICES.find(s=>s.id===id)}
 function barber(id){return BARBERS.find(b=>b.id===id)}
