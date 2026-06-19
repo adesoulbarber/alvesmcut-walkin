@@ -101,26 +101,44 @@ async function fetchQueue(){
 }
 
 async function syncQueue(nextItems, previousItems = []){
-  if (!supabase) return;
+  if (!supabase) {
+    alert('supabase non connecté : vérifie les variables vercel');
+    return;
+  }
 
   const nextTokens = nextItems.map(i => i.token || i.id).filter(Boolean);
   const previousTokens = previousItems.map(i => i.token || i.id).filter(Boolean);
   const removedTokens = previousTokens.filter(t => !nextTokens.includes(t));
 
   if (removedTokens.length) {
-    await supabase
+    const { error: deleteError } = await supabase
       .from('queue_items')
       .delete()
       .in('tracking_token', removedTokens);
+
+    if (deleteError) {
+      alert('erreur suppression supabase : ' + deleteError.message);
+      console.error(deleteError);
+      return;
+    }
   }
 
   if (nextItems.length) {
-    await supabase
+    const rows = nextItems.map(toDb);
+
+    const { error: upsertError } = await supabase
       .from('queue_items')
-      .upsert(nextItems.map(toDb), { onConflict: 'tracking_token' });
+      .upsert(rows, { onConflict: 'tracking_token' });
+
+    if (upsertError) {
+      alert('erreur ajout supabase : ' + upsertError.message);
+      console.error(upsertError);
+      return;
+    }
+
+    alert('client bien envoyé dans supabase');
   }
 }
-
 function useQueue(){
   const [items, setItems] = useState(getStore());
 
