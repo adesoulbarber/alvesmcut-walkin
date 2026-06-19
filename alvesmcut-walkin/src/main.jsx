@@ -3,8 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { Scissors, Clock, MapPin, ShieldCheck, Menu, UserRound, Tv, ListChecks, LogOut, ChevronRight, Search, Trash2, Play, CheckCircle, BellRing, XCircle, MoveRight, QrCode, Home } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
 import './styles.css';
-
-const BARBERS = [
+import { createClient } from '@supabase/supabase-js';const BARBERS = [
   {id:'alves', name:'Alves', role:'admin'},
   {id:'president', name:'Président', role:'barber'},
   {id:'adesoulbarber', name:'Adesoulbarber', role:'admin'},
@@ -20,8 +19,9 @@ const SERVICES = [
 
 const ACCESS = { alves2026: {name:'Alves', role:'admin', barber:'alves'}, adesoul2026: {name:'Adesoulbarber', role:'admin', barber:'adesoulbarber'}, alves:{name:'Alves', role:'barber', barber:'alves'}, president:{name:'Président', role:'barber', barber:'president'}, adesoul:{name:'Adesoulbarber', role:'barber', barber:'adesoulbarber'} };
 const STORE = 'alvesmcut_queue_v1';
-
-function uid(){return Math.random().toString(36).slice(2)+Date.now().toString(36)}
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabase = SUPABASE_URL && SUPABASE_KEY ? createClient(SUPABASE_URL, SUPABASE_KEY) : null;function uid(){return Math.random().toString(36).slice(2)+Date.now().toString(36)}
 function nowTime(){return new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}
 function getStore(){ try {return JSON.parse(localStorage.getItem(STORE)) || []} catch {return []} }
 function setStore(items){ localStorage.setItem(STORE, JSON.stringify(items)); window.dispatchEvent(new Event('queue-change')); }
