@@ -23,13 +23,140 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const supabase = SUPABASE_URL && SUPABASE_KEY ? createClient(SUPABASE_URL, SUPABASE_KEY) : null;function uid(){return Math.random().toString(36).slice(2)+Date.now().toString(36)}
 function nowTime(){return new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}
-function getStore(){ try {return JSON.parse(localStorage.getItem(STORE)) || []} catch {return []} }
-function setStore(items){ localStorage.setItem(STORE, JSON.stringify(items)); window.dispatchEvent(new Event('queue-change')); }
+function getStore(){
+  try {
+    return JSON.parse(localStorage.getItem(STORE)) || [];
+  } catch {
+    return [];
+  }
+}
+
+function setStoreLocal(items){
+  localStorage.setItem(STORE, JSON.stringify(items));
+  window.dispatchEvent(new Event('queue-change'));
+}
+
+function fromDb(row){
+  const created = row.created_at ? new Date(row.created_at) : new Date();
+
+  return {
+    id: row.tracking_token || row.id,
+    token: row.tracking_token || row.id,
+    first: row.customer_first_name || '',
+    last: row.customer_last_name || '',
+    phone: row.phone || '',
+    comment: row.comment || '',
+    barberId: row.barber_id,
+    requested: row.requested_barber_option || row.barber_id,
+    serviceId: row.service_id,
+    status: row.status || 'waiting',
+    position: row.position || 1,
+    estimatedWait: row.estimated_wait_minutes || 0,
+    createdAt: created.getTime(),
+    time: created.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+    startedAt: row.started_at ? new Date(row.started_at).getTime() : null,
+    completedAt: row.completed_at ? new Date(row.completed_at).getTime() : null
+  };
+}
+
+function toDb(item){
+  const s = service(item.serviceId);
+  const token = item.token || item.id || uid();
+
+  return {
+    customer_first_name: item.first || '',
+    customer_last_name: item.last || '',
+    phone: item.phone || '',
+    comment: item.comment || '',
+    barber_id: item.barberId,
+    requested_barber_option: item.requested || item.barberId,
+    service_id: item.serviceId,
+    service_name: s?.name || '',
+    service_price: s?.price || 0,
+    service_duration: s?.duration || 30,
+    status: item.status || 'waiting',
+    position: item.position || 1,
+    estimated_wait_minutes: item.estimatedWait || 0,
+    tracking_token: token,
+    created_at: item.createdAt ? new Date(item.createdAt).toISOString() : new Date().toISOString(),
+    started_at: item.startedAt ? new Date(item.startedAt).toISOString() : null,
+    completed_at: item.completedAt ? new Date(item.completedAt).toISOString() : null
+  };
+}
+
+async function fetchQueue(){
+  if (!supabase) return getStore();
+
+  const { data, error } = await supabase
+    .from('queue_items')
+    .select('*')
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    console.error('supabase fetch error', error);
+    return getStore();
+  }
+
+  return positions((data || []).map(fromDb));
+}
+
+async function syncQueue(nextItems, previousItems = []){
+  if (!supabase) return;
+
+  const nextTokens = nextItems.map(i => i.token || i.id).filter(Boolean);
+  const previousTokens = previousItems.map(i => i.token || i.id).filter(Boolean);
+  const removedTokens = previousTokens.filter(t => !nextTokens.includes(t));
+
+  if (removedTokens.length) {
+    await supabase
+      .from('queue_items')
+      .delete()
+      .in('tracking_token', removedTokens);
+  }
+
+  if (nextItems.length) {
+    await supabase
+      .from('queue_items')
+      .upsert(nextItems.map(toDb), { onConflict: 'tracking_token' });
+  }
+}
+
 function useQueue(){
-  const [items,setItems]=useState(getStore());
-  useEffect(()=>{const f=()=>setItems(getStore()); window.addEventListener('storage',f); window.addEventListener('queue-change',f); const t=setInterval(f,2500); return()=>{window.removeEventListener('storage',f); window.removeEventListener('queue-change',f); clearInterval(t)}},[]);
- return [items,(next)=>{setStore(next); setItems(next)}];}
-function active(items){return items.filter(i=>!['completed','cancelled','absent'].includes(i.status))}
+  const [items, setItems] = useState(getStore());
+
+  async function refresh(){
+    const fresh = await fetchQueue();
+    setItems(fresh);
+    setStoreLocal(fresh);
+  }
+
+  useEffect(() => {
+    refresh();
+
+    const localRefresh = () => setItems(getStore());
+    window.addEventListener('storage', localRefresh);
+    window.addEventListener('queue-change', localRefresh);
+
+    const timer = setInterval(refresh, 2500);
+
+    return () => {
+      window.removeEventListener('storage', localRefresh);
+      window.removeEventListener('queue-change', localRefresh);
+      clearInterval(timer);
+    };
+  }, []);
+
+  function updateQueue(next){
+    const updated = positions(next);
+    const previous = items;
+
+    setItems(updated);
+    setStoreLocal(updated);
+    syncQueue(updated, previous);
+  }
+
+  return [items, updateQueue];
+}function active(items){return items.filter(i=>!['completed','cancelled','absent'].includes(i.status))}
 function service(id){return SERVICES.find(s=>s.id===id)}
 function barber(id){return BARBERS.find(b=>b.id===id)}
 function waitForBarber(items, barberId){return active(items).filter(i=>i.barberId===barberId).reduce((sum,i)=>sum+(service(i.serviceId)?.duration||30),0)}
