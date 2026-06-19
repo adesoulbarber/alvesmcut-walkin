@@ -136,7 +136,7 @@ async function syncQueue(nextItems, previousItems = []){
       return;
     }
 
-    alert('client bien envoyé dans supabase');
+   
   }
 }
 function useQueue(){
